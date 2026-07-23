@@ -1,0 +1,16 @@
+{
+  "name": "@closeout/algorand",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit false",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@closeout/core": "workspace:*",
+    "algosdk": "^3.5.2"
+  }
+}
