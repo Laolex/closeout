@@ -81,6 +81,15 @@ test("an uncertain or unaccepted job refunds only after expiry", () => {
   assert.throws(() => release(refunded, intent(), 501, "release_tx"), TransitionError);
 });
 
+test("an accepted job is no longer refundable, however long the buyer waits", () => {
+  // Acceptance is one-way, and the off-chain machine must agree with the
+  // contract: if this permitted a refund the contract rejects, the API
+  // would report a settled outcome the chain never performed — which is
+  // the whole claim this product makes.
+  const accepted = accept(deliveredJob(), "BUYER", intent());
+  assert.throws(() => refund(accepted, "BUYER", 100_000, "refund_tx"), TransitionError);
+});
+
 test("only the named parties may fund, deliver, or accept", () => {
   const draft = baseJob();
   assert.throws(() => fund(draft, "OTHER", "fund_tx"), TransitionError);

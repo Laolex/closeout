@@ -4,7 +4,7 @@
 // @algorandfoundation/algorand-typescript/arc4/index.d.ts::Contract.approvalProgram() -> uint64:
 main:
     intcblock 0 1 4 8
-    bytecblock "state" "buyer" "usdc" "amount" "provider" "expiresAtRound"
+    bytecblock "state" "buyer" "provider" "usdc" "amount" "expiresAtRound"
     txn ApplicationID
     bnz main_after_if_else@2
     // smart_contracts/closeout_escrow/contract.algo.ts:27
@@ -119,21 +119,21 @@ configure:
     app_global_put
     // smart_contracts/closeout_escrow/contract.algo.ts:23
     // public provider = GlobalState<Account>()
-    bytec 4 // "provider"
+    bytec_2 // "provider"
     // smart_contracts/closeout_escrow/contract.algo.ts:46
     // this.provider.value = provider
     uncover 4
     app_global_put
     // smart_contracts/closeout_escrow/contract.algo.ts:24
     // public usdc = GlobalState<Asset>()
-    bytec_2 // "usdc"
+    bytec_3 // "usdc"
     // smart_contracts/closeout_escrow/contract.algo.ts:47
     // this.usdc.value = usdc
     dig 3
     app_global_put
     // smart_contracts/closeout_escrow/contract.algo.ts:25
     // public amount = GlobalState<uint64>()
-    bytec_3 // "amount"
+    bytec 4 // "amount"
     // smart_contracts/closeout_escrow/contract.algo.ts:48
     // this.amount.value = amount
     uncover 2
@@ -267,7 +267,7 @@ fund:
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:24
     // public usdc = GlobalState<Asset>()
-    bytec_2 // "usdc"
+    bytec_3 // "usdc"
     // smart_contracts/closeout_escrow/contract.algo.ts:67
     // assert(payment.xferAsset === this.usdc.value, 'Funding asset does not match')
     app_global_get_ex
@@ -280,7 +280,7 @@ fund:
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:25
     // public amount = GlobalState<uint64>()
-    bytec_3 // "amount"
+    bytec 4 // "amount"
     // smart_contracts/closeout_escrow/contract.algo.ts:68
     // assert(payment.assetAmount === this.amount.value, 'Funding amount does not match')
     app_global_get_ex
@@ -321,7 +321,7 @@ markDelivered:
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:23
     // public provider = GlobalState<Account>()
-    bytec 4 // "provider"
+    bytec_2 // "provider"
     // smart_contracts/closeout_escrow/contract.algo.ts:75
     // assert(Txn.sender === this.provider.value, 'Only the provider may mark delivery')
     app_global_get_ex
@@ -384,33 +384,55 @@ markAccepted:
 
 // smart_contracts/closeout_escrow/contract.algo.ts::CloseoutEscrow.release[routing]() -> void:
 release:
-    // smart_contracts/closeout_escrow/contract.algo.ts:88
+    // smart_contracts/closeout_escrow/contract.algo.ts:96
     // assert(this.state.value === Uint64(4), 'Escrow is not accepted')
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:27
     // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
     bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:88
+    // smart_contracts/closeout_escrow/contract.algo.ts:96
     // assert(this.state.value === Uint64(4), 'Escrow is not accepted')
     app_global_get_ex
     assert // check GlobalState exists
     intc_2 // 4
     ==
     assert // Escrow is not accepted
-    // smart_contracts/closeout_escrow/contract.algo.ts:89
-    // assert(Txn.sender === this.buyer.value, 'Only the buyer may release')
+    // smart_contracts/closeout_escrow/contract.algo.ts:98
+    // Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
     txn Sender
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:22
     // public buyer = GlobalState<Account>()
     bytec_1 // "buyer"
-    // smart_contracts/closeout_escrow/contract.algo.ts:89
-    // assert(Txn.sender === this.buyer.value, 'Only the buyer may release')
+    // smart_contracts/closeout_escrow/contract.algo.ts:98
+    // Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
     app_global_get_ex
     assert // check GlobalState exists
     ==
-    assert // Only the buyer may release
-    // smart_contracts/closeout_escrow/contract.algo.ts:90-97
+    bnz release_bool_true@3
+    txn Sender
+    intc_0 // 0
+    // smart_contracts/closeout_escrow/contract.algo.ts:23
+    // public provider = GlobalState<Account>()
+    bytec_2 // "provider"
+    // smart_contracts/closeout_escrow/contract.algo.ts:98
+    // Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
+    app_global_get_ex
+    assert // check GlobalState exists
+    ==
+    bz release_bool_false@4
+
+release_bool_true@3:
+    intc_1 // 1
+
+release_bool_merge@5:
+    // smart_contracts/closeout_escrow/contract.algo.ts:97-100
+    // assert(
+    //   Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
+    //   'Only the buyer or provider may release',
+    // )
+    assert // Only the buyer or provider may release
+    // smart_contracts/closeout_escrow/contract.algo.ts:101-108
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.provider.value,
@@ -420,40 +442,40 @@ release:
     //   })
     //   .submit()
     itxn_begin
-    // smart_contracts/closeout_escrow/contract.algo.ts:92
+    // smart_contracts/closeout_escrow/contract.algo.ts:103
     // assetReceiver: this.provider.value,
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:23
     // public provider = GlobalState<Account>()
-    bytec 4 // "provider"
-    // smart_contracts/closeout_escrow/contract.algo.ts:92
+    bytec_2 // "provider"
+    // smart_contracts/closeout_escrow/contract.algo.ts:103
     // assetReceiver: this.provider.value,
     app_global_get_ex
     assert // check GlobalState exists
-    // smart_contracts/closeout_escrow/contract.algo.ts:93
+    // smart_contracts/closeout_escrow/contract.algo.ts:104
     // xferAsset: this.usdc.value,
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:24
     // public usdc = GlobalState<Asset>()
-    bytec_2 // "usdc"
-    // smart_contracts/closeout_escrow/contract.algo.ts:93
+    bytec_3 // "usdc"
+    // smart_contracts/closeout_escrow/contract.algo.ts:104
     // xferAsset: this.usdc.value,
     app_global_get_ex
     assert // check GlobalState exists
-    // smart_contracts/closeout_escrow/contract.algo.ts:94
+    // smart_contracts/closeout_escrow/contract.algo.ts:105
     // assetAmount: this.amount.value,
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:25
     // public amount = GlobalState<uint64>()
-    bytec_3 // "amount"
-    // smart_contracts/closeout_escrow/contract.algo.ts:94
+    bytec 4 // "amount"
+    // smart_contracts/closeout_escrow/contract.algo.ts:105
     // assetAmount: this.amount.value,
     app_global_get_ex
     assert // check GlobalState exists
     itxn_field AssetAmount
     itxn_field XferAsset
     itxn_field AssetReceiver
-    // smart_contracts/closeout_escrow/contract.algo.ts:90-96
+    // smart_contracts/closeout_escrow/contract.algo.ts:101-107
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.provider.value,
@@ -463,11 +485,11 @@ release:
     //   })
     intc_2 // 4
     itxn_field TypeEnum
-    // smart_contracts/closeout_escrow/contract.algo.ts:95
+    // smart_contracts/closeout_escrow/contract.algo.ts:106
     // fee: Uint64(0),
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/closeout_escrow/contract.algo.ts:90-97
+    // smart_contracts/closeout_escrow/contract.algo.ts:101-108
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.provider.value,
@@ -480,72 +502,65 @@ release:
     // smart_contracts/closeout_escrow/contract.algo.ts:27
     // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
     bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:98
+    // smart_contracts/closeout_escrow/contract.algo.ts:109
     // this.state.value = Uint64(5)
     pushint 5
     app_global_put
-    // smart_contracts/closeout_escrow/contract.algo.ts:87
+    // smart_contracts/closeout_escrow/contract.algo.ts:95
     // public release(): void {
     intc_1 // 1
     return
 
+release_bool_false@4:
+    intc_0 // 0
+    b release_bool_merge@5
+
 
 // smart_contracts/closeout_escrow/contract.algo.ts::CloseoutEscrow.refund[routing]() -> void:
 refund:
-    // smart_contracts/closeout_escrow/contract.algo.ts:104
-    // this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
+    // smart_contracts/closeout_escrow/contract.algo.ts:122
+    // this.state.value === Uint64(2) || this.state.value === Uint64(3),
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:27
     // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
     bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:104
-    // this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
+    // smart_contracts/closeout_escrow/contract.algo.ts:122
+    // this.state.value === Uint64(2) || this.state.value === Uint64(3),
     app_global_get_ex
     assert // check GlobalState exists
     pushint 2
     ==
-    bnz refund_bool_true@4
+    bnz refund_bool_true@3
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:27
     // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
     bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:104
-    // this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
+    // smart_contracts/closeout_escrow/contract.algo.ts:122
+    // this.state.value === Uint64(2) || this.state.value === Uint64(3),
     app_global_get_ex
     assert // check GlobalState exists
     pushint 3
     ==
-    bnz refund_bool_true@4
-    intc_0 // 0
-    // smart_contracts/closeout_escrow/contract.algo.ts:27
-    // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
-    bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:104
-    // this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
-    app_global_get_ex
-    assert // check GlobalState exists
-    intc_2 // 4
-    ==
-    bz refund_bool_false@5
+    bz refund_bool_false@4
 
-refund_bool_true@4:
+refund_bool_true@3:
     intc_1 // 1
 
-refund_bool_merge@6:
-    // smart_contracts/closeout_escrow/contract.algo.ts:103-106
+refund_bool_merge@5:
+    // smart_contracts/closeout_escrow/contract.algo.ts:121-124
     // assert(
-    //   this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
+    //   this.state.value === Uint64(2) || this.state.value === Uint64(3),
     //   'Escrow is not refundable',
     // )
     assert // Escrow is not refundable
-    // smart_contracts/closeout_escrow/contract.algo.ts:107
+    // smart_contracts/closeout_escrow/contract.algo.ts:125
     // assert(Txn.sender === this.buyer.value, 'Only the buyer may refund')
     txn Sender
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:22
     // public buyer = GlobalState<Account>()
     bytec_1 // "buyer"
-    // smart_contracts/closeout_escrow/contract.algo.ts:107
+    // smart_contracts/closeout_escrow/contract.algo.ts:125
     // assert(Txn.sender === this.buyer.value, 'Only the buyer may refund')
     app_global_get_ex
     assert // check GlobalState exists
@@ -553,20 +568,20 @@ refund_bool_merge@6:
     dig 1
     ==
     assert // Only the buyer may refund
-    // smart_contracts/closeout_escrow/contract.algo.ts:108
+    // smart_contracts/closeout_escrow/contract.algo.ts:126
     // assert(Global.round > this.expiresAtRound.value, 'Escrow has not expired')
     global Round
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:26
     // public expiresAtRound = GlobalState<uint64>()
     bytec 5 // "expiresAtRound"
-    // smart_contracts/closeout_escrow/contract.algo.ts:108
+    // smart_contracts/closeout_escrow/contract.algo.ts:126
     // assert(Global.round > this.expiresAtRound.value, 'Escrow has not expired')
     app_global_get_ex
     assert // check GlobalState exists
     >
     assert // Escrow has not expired
-    // smart_contracts/closeout_escrow/contract.algo.ts:109-116
+    // smart_contracts/closeout_escrow/contract.algo.ts:127-134
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.buyer.value,
@@ -576,30 +591,30 @@ refund_bool_merge@6:
     //   })
     //   .submit()
     itxn_begin
-    // smart_contracts/closeout_escrow/contract.algo.ts:112
+    // smart_contracts/closeout_escrow/contract.algo.ts:130
     // xferAsset: this.usdc.value,
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:24
     // public usdc = GlobalState<Asset>()
-    bytec_2 // "usdc"
-    // smart_contracts/closeout_escrow/contract.algo.ts:112
+    bytec_3 // "usdc"
+    // smart_contracts/closeout_escrow/contract.algo.ts:130
     // xferAsset: this.usdc.value,
     app_global_get_ex
     assert // check GlobalState exists
-    // smart_contracts/closeout_escrow/contract.algo.ts:113
+    // smart_contracts/closeout_escrow/contract.algo.ts:131
     // assetAmount: this.amount.value,
     intc_0 // 0
     // smart_contracts/closeout_escrow/contract.algo.ts:25
     // public amount = GlobalState<uint64>()
-    bytec_3 // "amount"
-    // smart_contracts/closeout_escrow/contract.algo.ts:113
+    bytec 4 // "amount"
+    // smart_contracts/closeout_escrow/contract.algo.ts:131
     // assetAmount: this.amount.value,
     app_global_get_ex
     assert // check GlobalState exists
     itxn_field AssetAmount
     itxn_field XferAsset
     itxn_field AssetReceiver
-    // smart_contracts/closeout_escrow/contract.algo.ts:109-115
+    // smart_contracts/closeout_escrow/contract.algo.ts:127-133
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.buyer.value,
@@ -609,11 +624,11 @@ refund_bool_merge@6:
     //   })
     intc_2 // 4
     itxn_field TypeEnum
-    // smart_contracts/closeout_escrow/contract.algo.ts:114
+    // smart_contracts/closeout_escrow/contract.algo.ts:132
     // fee: Uint64(0),
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/closeout_escrow/contract.algo.ts:109-116
+    // smart_contracts/closeout_escrow/contract.algo.ts:127-134
     // itxn
     //   .assetTransfer({
     //     assetReceiver: this.buyer.value,
@@ -626,15 +641,15 @@ refund_bool_merge@6:
     // smart_contracts/closeout_escrow/contract.algo.ts:27
     // public state = GlobalState<uint64>({ initialValue: Uint64(0) })
     bytec_0 // "state"
-    // smart_contracts/closeout_escrow/contract.algo.ts:117
+    // smart_contracts/closeout_escrow/contract.algo.ts:135
     // this.state.value = Uint64(6)
     pushint 6
     app_global_put
-    // smart_contracts/closeout_escrow/contract.algo.ts:102
+    // smart_contracts/closeout_escrow/contract.algo.ts:120
     // public refund(): void {
     intc_1 // 1
     return
 
-refund_bool_false@5:
+refund_bool_false@4:
     intc_0 // 0
-    b refund_bool_merge@6
+    b refund_bool_merge@5

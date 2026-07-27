@@ -140,7 +140,12 @@ export function release(job: Job, intent: SettlementIntent, currentRound: number
 }
 
 export function refund(job: Job, actor: string, currentRound: number, refundTxId: string): Job {
-  if (!["funded", "delivered", "accepted"].includes(job.state)) {
+  // Funded and delivered are unresolved; accepted is not. A recorded
+  // acceptance resolves to the provider, so a buyer cannot accept a
+  // delivery, sit out the expiry, and claw the payment back. This mirrors
+  // the contract exactly — a divergence here would have the API reporting
+  // an outcome the chain refuses to perform.
+  if (!["funded", "delivered"].includes(job.state)) {
     throw new TransitionError("Only unresolved funded jobs can be refunded");
   }
   if (actor !== job.buyer) throw new TransitionError("Only the buyer can request a refund");

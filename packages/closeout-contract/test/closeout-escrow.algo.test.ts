@@ -167,16 +167,35 @@ describe('only the named actor may make each transition', () => {
     )
   })
 
-  test('the provider cannot release funds to themselves', () => {
+  test('the provider may release once acceptance is recorded', () => {
+    // Acceptance is the buyer's authorization to pay. Leaving release
+    // buyer-only lets a buyer who accepts and then disappears strand the
+    // funds, with the provider holding an accepted delivery and no move.
     const job = accepted()
-    expect(() => call(job.provider, job.escrow, () => job.escrow.release())).toThrow(/Only the buyer may release/)
+
+    call(job.provider, job.escrow, () => job.escrow.release())
+    expect(job.escrow.state.value).toEqual(S.released)
   })
 
-  test('a stranger cannot release or refund', () => {
-    const job = accepted()
-    expect(() => call(job.stranger, job.escrow, () => job.escrow.release())).toThrow(/Only the buyer may release/)
+  test('the provider cannot release before the buyer accepts', () => {
+    const job = delivered()
+    expect(() => call(job.provider, job.escrow, () => job.escrow.release())).toThrow(/not accepted/)
+  })
 
+  test('a stranger cannot release an accepted job', () => {
+    const job = accepted()
+    expect(() => call(job.stranger, job.escrow, () => job.escrow.release())).toThrow(
+      /Only the buyer or provider may release/,
+    )
+  })
+
+  test('a stranger cannot refund a refundable job', () => {
+    // Asserted against a *funded* job on purpose. An accepted one is no
+    // longer refundable at all, so the state check would fire first and
+    // the authorization rule would never be exercised.
+    const job = funded()
     expire()
+
     expect(() => call(job.stranger, job.escrow, () => job.escrow.refund())).toThrow(/Only the buyer may refund/)
   })
 })
@@ -293,27 +312,26 @@ describe('refund is gated on expiry, not on impatience', () => {
     expect(() => call(job.buyer, job.escrow, () => job.escrow.refund())).toThrow(/has not expired/)
   })
 
-  test('KNOWN GAP: an ACCEPTED job can still be refunded to the buyer after expiry', () => {
-    // This documents current behaviour, and it contradicts the spec's
-    // state machine, which allows a refund only from `funded | delivered`
-    // and sends `accepted` to `released`.
-    //
-    // As written, a buyer can accept a delivery, decline to release, wait
-    // for expiry, and take the money back — for work they have already
-    // signed an acceptance for. The provider cannot release on their own
-    // (`Only the buyer may release`), so they have no counter-move.
-    //
-    // Removing state 4 from the refundable set is not sufficient on its
-    // own: a buyer who accepts and then disappears would strand the funds
-    // forever. The two changes belong together — refund limited to
-    // funded|delivered, and release callable by the provider once
-    // acceptance is recorded. Both are settlement-semantics decisions, so
-    // this is left failing-by-documentation rather than silently changed.
+  test('an accepted job cannot be refunded, however long the buyer waits', () => {
+    // Acceptance is one-way. Otherwise a buyer could accept a delivery,
+    // decline to release, wait out the expiry and take the money back for
+    // work they had already signed off — and the provider, who cannot
+    // release without acceptance, would have no counter-move.
     const job = accepted()
     expire()
 
-    call(job.buyer, job.escrow, () => job.escrow.refund())
-    expect(job.escrow.state.value).toEqual(S.refunded)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.refund())).toThrow(/not refundable/)
+    expect(job.escrow.state.value).toEqual(S.accepted)
+  })
+
+  test('an accepted job stays releasable to the provider after expiry', () => {
+    // The flip side of the rule above: expiry must not become a way to
+    // freeze accepted work either.
+    const job = accepted()
+    expire()
+
+    call(job.provider, job.escrow, () => job.escrow.release())
+    expect(job.escrow.state.value).toEqual(S.released)
   })
 
   test('a delivered but unaccepted job refunds after expiry', () => {

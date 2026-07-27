@@ -83,10 +83,21 @@ export class CloseoutEscrow extends Contract {
     this.state.value = Uint64(4)
   }
 
-  /** Releases the exact funded amount once, and only after buyer acceptance. */
+  /**
+   * Releases the exact funded amount once, and only after buyer acceptance.
+   *
+   * Either party may submit it. Acceptance is already the buyer's
+   * authorization to pay, so the transfer is not a second discretionary
+   * decision — and leaving it buyer-only would let a buyer who accepts and
+   * then goes quiet strand the funds against a delivery they signed off,
+   * with the provider holding no move of their own.
+   */
   public release(): void {
     assert(this.state.value === Uint64(4), 'Escrow is not accepted')
-    assert(Txn.sender === this.buyer.value, 'Only the buyer may release')
+    assert(
+      Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
+      'Only the buyer or provider may release',
+    )
     itxn
       .assetTransfer({
         assetReceiver: this.provider.value,
@@ -98,10 +109,17 @@ export class CloseoutEscrow extends Contract {
     this.state.value = Uint64(5)
   }
 
-  /** Returns funds to the buyer when an unresolved job has expired. */
+  /**
+   * Returns funds to the buyer when an *unresolved* job has expired.
+   *
+   * Funded and delivered are unresolved; accepted is not. Acceptance is
+   * one-way, so a buyer cannot accept a delivery, sit out the expiry and
+   * claw back payment for work they already signed off. Uncertainty
+   * resolves to the buyer; a recorded acceptance resolves to the provider.
+   */
   public refund(): void {
     assert(
-      this.state.value === Uint64(2) || this.state.value === Uint64(3) || this.state.value === Uint64(4),
+      this.state.value === Uint64(2) || this.state.value === Uint64(3),
       'Escrow is not refundable',
     )
     assert(Txn.sender === this.buyer.value, 'Only the buyer may refund')
