@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    // ESM, not CommonJS: algorand-typescript-testing publishes only an
+    // `import` condition (for "." and for the ./runtime-helpers subpath
+    // the transformer injects). Emitting require() against it fails as
+    // `No "exports" main defined` / `subpath is not defined by exports`,
+    // which reads like a broken dependency rather than a module-format
+    // mismatch. Legacy "Node" resolution compounds it by ignoring the
+    // exports map.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "lib": ["ESNext"]
+  },
+  "include": ["smart_contracts/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "artifacts"]
+}
