@@ -91,11 +91,20 @@ function delivered() {
   return job
 }
 
-/** Drives a job to `accepted`. */
-function accepted() {
+/**
+ * The hash of the SettlementIntent the buyer signed. On-chain this is
+ * the commitment that authorizes the payout — the API cannot substitute
+ * a different one between acceptance and release.
+ */
+function intentHash() {
+  return ctx.any.bytes(32)
+}
+
+/** Drives a job to `accepted`, committing to a settlement intent. */
+function accepted(intent = intentHash()) {
   const job = delivered()
-  call(job.buyer, job.escrow, () => job.escrow.markAccepted())
-  return job
+  call(job.buyer, job.escrow, () => job.escrow.markAccepted(intent))
+  return { ...job, intent }
 }
 
 /** Moves the ledger past the job's expiry round. */
@@ -119,10 +128,11 @@ describe("the happy path each transition is meant to allow", () => {
     call(job.provider, job.escrow, () => job.escrow.markDelivered())
     expect(job.escrow.state.value).toEqual(S.delivered)
 
-    call(job.buyer, job.escrow, () => job.escrow.markAccepted())
+    const intent = intentHash()
+    call(job.buyer, job.escrow, () => job.escrow.markAccepted(intent))
     expect(job.escrow.state.value).toEqual(S.accepted)
 
-    call(job.buyer, job.escrow, () => job.escrow.release())
+    call(job.buyer, job.escrow, () => job.escrow.release(intent))
     expect(job.escrow.state.value).toEqual(S.released)
   })
 
@@ -162,7 +172,7 @@ describe('only the named actor may make each transition', () => {
 
   test('the provider cannot accept their own delivery', () => {
     const job = delivered()
-    expect(() => call(job.provider, job.escrow, () => job.escrow.markAccepted())).toThrow(
+    expect(() => call(job.provider, job.escrow, () => job.escrow.markAccepted(intentHash()))).toThrow(
       /Only the buyer may accept/,
     )
   })
@@ -173,18 +183,18 @@ describe('only the named actor may make each transition', () => {
     // funds, with the provider holding an accepted delivery and no move.
     const job = accepted()
 
-    call(job.provider, job.escrow, () => job.escrow.release())
+    call(job.provider, job.escrow, () => job.escrow.release(job.intent))
     expect(job.escrow.state.value).toEqual(S.released)
   })
 
   test('the provider cannot release before the buyer accepts', () => {
     const job = delivered()
-    expect(() => call(job.provider, job.escrow, () => job.escrow.release())).toThrow(/not accepted/)
+    expect(() => call(job.provider, job.escrow, () => job.escrow.release(intentHash()))).toThrow(/not accepted/)
   })
 
   test('a stranger cannot release an accepted job', () => {
     const job = accepted()
-    expect(() => call(job.stranger, job.escrow, () => job.escrow.release())).toThrow(
+    expect(() => call(job.stranger, job.escrow, () => job.escrow.release(job.intent))).toThrow(
       /Only the buyer or provider may release/,
     )
   })
@@ -240,23 +250,23 @@ describe('every out-of-order transition is refused', () => {
     const job = configured()
 
     expect(() => call(job.provider, job.escrow, () => job.escrow.markDelivered())).toThrow(/not funded/)
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.markAccepted())).toThrow(/no delivery/)
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.release())).toThrow(/not accepted/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.markAccepted(intentHash()))).toThrow(/no delivery/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(intentHash()))).toThrow(/not accepted/)
   })
 
   test('funds cannot be released before delivery or acceptance', () => {
     const funded_ = funded()
-    expect(() => call(funded_.buyer, funded_.escrow, () => funded_.escrow.release())).toThrow(/not accepted/)
+    expect(() => call(funded_.buyer, funded_.escrow, () => funded_.escrow.release(intentHash()))).toThrow(/not accepted/)
 
     const delivered_ = delivered()
-    expect(() => call(delivered_.buyer, delivered_.escrow, () => delivered_.escrow.release())).toThrow(
+    expect(() => call(delivered_.buyer, delivered_.escrow, () => delivered_.escrow.release(intentHash()))).toThrow(
       /not accepted/,
     )
   })
 
   test('acceptance cannot skip delivery', () => {
     const job = funded()
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.markAccepted())).toThrow(/no delivery/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.markAccepted(intentHash()))).toThrow(/no delivery/)
   })
 
   test('a job cannot be funded twice', () => {
@@ -265,12 +275,50 @@ describe('every out-of-order transition is refused', () => {
   })
 })
 
+describe('the payout is bound to the exact intent the buyer accepted', () => {
+  test('release refuses an intent other than the accepted one', () => {
+    // This is the claim the product rests on: the *signed intent*
+    // authorizes the settlement, not whatever the API says at release
+    // time. Without this check, a compromised or buggy API could accept
+    // one intent and release against another, and nothing on-chain would
+    // notice.
+    const job = accepted()
+
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(intentHash()))).toThrow(
+      /does not match the accepted intent/,
+    )
+    expect(job.escrow.state.value).toEqual(S.accepted)
+  })
+
+  test('the provider cannot substitute their own intent either', () => {
+    const job = accepted()
+
+    expect(() => call(job.provider, job.escrow, () => job.escrow.release(intentHash()))).toThrow(
+      /does not match the accepted intent/,
+    )
+  })
+
+  test('acceptance records the intent hash on-chain', () => {
+    const job = accepted()
+    expect(job.escrow.acceptedIntent.value).toEqual(job.intent)
+  })
+
+  test('a rejected release leaves the job releasable against the right intent', () => {
+    // A failed attempt must not consume the acceptance.
+    const job = accepted()
+
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(intentHash()))).toThrow()
+    call(job.buyer, job.escrow, () => job.escrow.release(job.intent))
+    expect(job.escrow.state.value).toEqual(S.released)
+  })
+})
+
 describe('value conservation: the escrow pays out exactly once', () => {
   test('release cannot be replayed', () => {
     const job = accepted()
-    call(job.buyer, job.escrow, () => job.escrow.release())
+    call(job.buyer, job.escrow, () => job.escrow.release(job.intent))
 
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.release())).toThrow(/not accepted/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(job.intent))).toThrow(/not accepted/)
     expect(job.escrow.state.value).toEqual(S.released)
   })
 
@@ -286,7 +334,7 @@ describe('value conservation: the escrow pays out exactly once', () => {
   test('a released job cannot then be refunded', () => {
     // Otherwise the buyer is paid back money the provider already has.
     const job = accepted()
-    call(job.buyer, job.escrow, () => job.escrow.release())
+    call(job.buyer, job.escrow, () => job.escrow.release(job.intent))
     expire()
 
     expect(() => call(job.buyer, job.escrow, () => job.escrow.refund())).toThrow(/not refundable/)
@@ -297,7 +345,7 @@ describe('value conservation: the escrow pays out exactly once', () => {
     expire()
     call(job.buyer, job.escrow, () => job.escrow.refund())
 
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.release())).toThrow(/not accepted/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(job.intent))).toThrow(/not accepted/)
   })
 })
 
@@ -330,7 +378,7 @@ describe('refund is gated on expiry, not on impatience', () => {
     const job = accepted()
     expire()
 
-    call(job.provider, job.escrow, () => job.escrow.release())
+    call(job.provider, job.escrow, () => job.escrow.release(job.intent))
     expect(job.escrow.state.value).toEqual(S.released)
   })
 

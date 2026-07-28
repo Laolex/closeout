@@ -9,7 +9,7 @@ import {
   gtxn,
   itxn,
 } from '@algorandfoundation/algorand-typescript'
-import type { Account, Asset, uint64 } from '@algorandfoundation/algorand-typescript'
+import type { Account, Asset, bytes, uint64 } from '@algorandfoundation/algorand-typescript'
 
 /**
  * One fixed-price Closeout job.
@@ -17,7 +17,7 @@ import type { Account, Asset, uint64 } from '@algorandfoundation/algorand-typesc
  * This contract is deliberately a single-job escrow. It makes the release and
  * refund rules easy to audit before a multi-job box-backed application exists.
  */
-@contract({ stateTotals: { globalUints: 4, globalBytes: 2 } })
+@contract({ stateTotals: { globalUints: 4, globalBytes: 3 } })
 export class CloseoutEscrow extends Contract {
   public buyer = GlobalState<Account>()
   public provider = GlobalState<Account>()
@@ -25,6 +25,18 @@ export class CloseoutEscrow extends Contract {
   public amount = GlobalState<uint64>()
   public expiresAtRound = GlobalState<uint64>()
   public state = GlobalState<uint64>({ initialValue: Uint64(0) })
+
+  /**
+   * Hash of the SettlementIntent the buyer signed when accepting.
+   *
+   * This is what authorizes the payout. The terms themselves — buyer,
+   * provider, asset, amount, expiry — are already immutable here, so what
+   * the commitment adds is that the release must be the *same* settlement
+   * the buyer accepted, nonce included. Without it, an API that accepts
+   * one intent and releases against another is indistinguishable on-chain
+   * from an honest one.
+   */
+  public acceptedIntent = GlobalState<bytes>()
 
   /**
    * Stores the immutable job terms and opts the application into the exact ASA.
@@ -76,10 +88,15 @@ export class CloseoutEscrow extends Contract {
     this.state.value = Uint64(3)
   }
 
-  /** Marks the delivery accepted. Release stays a separate transition. */
-  public markAccepted(): void {
+  /**
+   * Marks the delivery accepted, committing to the settlement intent that
+   * will authorize the payout. Release stays a separate transition.
+   */
+  public markAccepted(intentHash: bytes): void {
     assert(this.state.value === Uint64(3), 'Escrow has no delivery')
     assert(Txn.sender === this.buyer.value, 'Only the buyer may accept delivery')
+    assert(intentHash.length === Uint64(32), 'Settlement intent hash must be 32 bytes')
+    this.acceptedIntent.value = intentHash
     this.state.value = Uint64(4)
   }
 
@@ -92,12 +109,13 @@ export class CloseoutEscrow extends Contract {
    * then goes quiet strand the funds against a delivery they signed off,
    * with the provider holding no move of their own.
    */
-  public release(): void {
+  public release(intentHash: bytes): void {
     assert(this.state.value === Uint64(4), 'Escrow is not accepted')
     assert(
       Txn.sender === this.buyer.value || Txn.sender === this.provider.value,
       'Only the buyer or provider may release',
     )
+    assert(intentHash === this.acceptedIntent.value, 'Settlement does not match the accepted intent')
     itxn
       .assetTransfer({
         assetReceiver: this.provider.value,
