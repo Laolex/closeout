@@ -1,4 +1,12 @@
 import { Hono } from "hono";
+import {
+  X402_VERSION,
+  buildRequirements,
+  createMemoryPaidStore,
+  nonceFromHeader,
+  type PaidStore,
+  type PaymentConfig,
+} from "./payment.js";
 import { buildTimeline, renderTimeline } from "@closeout/console";
 import {
   TransitionError,
@@ -69,7 +77,23 @@ function intentFromBody(body: Record<string, unknown>): SettlementIntent {
   };
 }
 
-export function createCloseoutApp(store: JobStore = createMemoryStore()): Hono {
+export interface CloseoutOptions {
+  store?: JobStore;
+  /** Omit to leave job creation free, as the prototype was. */
+  payment?: PaymentConfig;
+  paidStore?: PaidStore;
+}
+
+export function createCloseoutApp(
+  storeOrOptions: JobStore | CloseoutOptions = createMemoryStore(),
+): Hono {
+  const options: CloseoutOptions =
+    "get" in storeOrOptions && "set" in storeOrOptions
+      ? { store: storeOrOptions as JobStore }
+      : (storeOrOptions as CloseoutOptions);
+  const store = options.store ?? createMemoryStore();
+  const payment = options.payment;
+  const paid = options.paidStore ?? createMemoryPaidStore();
   const app = new Hono();
 
   app.onError((error, c) => {
@@ -78,9 +102,52 @@ export function createCloseoutApp(store: JobStore = createMemoryStore()): Hono {
   });
 
   app.post("/jobs", async (c) => {
+    if (!payment) {
+      const job = jobFromBody(record(await c.req.json()));
+      if (store.get(job.id)) return c.json({ error: "Job already exists" }, 409);
+      store.set(job);
+      return c.json({ job }, 201);
+    }
+
+    const requirements = buildRequirements(payment);
+    const header = c.req.header("x-payment");
+    if (!header) {
+      return c.json({ x402Version: X402_VERSION, error: "payment required", accepts: [requirements] }, 402);
+    }
+
+    const nonce = nonceFromHeader(header);
+    const already = paid.get(nonce);
+    if (already) {
+      // A replay of a paid request returns the work it bought rather
+      // than charging again or creating a second job.
+      const existing = store.get(already.jobId);
+      if (existing) return c.json({ job: existing }, 201);
+    }
+
+    const verified = await payment.facilitator.verify(header, requirements);
+    if (!verified.ok) return c.json({ error: verified.reason ?? "payment rejected" }, 402);
+
+    // Validation happens after verification but before settlement, so a
+    // malformed job costs the caller nothing.
     const job = jobFromBody(record(await c.req.json()));
     if (store.get(job.id)) return c.json({ error: "Job already exists" }, 409);
+
+    // Persist before settling: a crash here loses our fee, never their
+    // money for a job that does not exist.
     store.set(job);
+    paid.set(nonce, { jobId: job.id, settled: false });
+
+    try {
+      await payment.facilitator.settle(header, requirements);
+    } catch (error) {
+      // Never 200 with the work attached on a settlement failure, or the
+      // endpoint is free to anyone whose settlement conveniently errors.
+      return c.json(
+        { error: `settlement failed: ${error instanceof Error ? error.message : String(error)}` },
+        502,
+      );
+    }
+    paid.set(nonce, { jobId: job.id, settled: true });
     return c.json({ job }, 201);
   });
 
