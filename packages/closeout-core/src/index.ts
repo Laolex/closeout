@@ -35,6 +35,12 @@ export interface Job {
   amount: string;
   expiresAtRound: number;
   deliveryMode: DeliveryMode;
+  /**
+   * Commitment to the agreed task. The task text itself stays off-chain
+   * and out of every public record; this is what a receipt can name
+   * without disclosing what was bought.
+   */
+  taskCommitment: string;
   state: JobState;
   fundingTxId?: string;
   delivery?: Delivery;
@@ -88,6 +94,7 @@ export function createJob(input: Omit<Job, "state">): Job {
   requireValue(input.id, "id");
   requireValue(input.buyer, "buyer");
   requireValue(input.provider, "provider");
+  requireValue(input.taskCommitment, "taskCommitment");
   requirePositiveAmount(input.amount);
   if (!Number.isInteger(input.assetId) || input.assetId < 0) {
     throw new TransitionError("assetId must be a non-negative integer");
@@ -165,4 +172,92 @@ export function assertIntentMatchesJob(intent: SettlementIntent, job: Job): void
   if (intent.amount !== job.amount) throw new TransitionError("Settlement intent amount does not match");
   if (intent.expiresAtRound !== job.expiresAtRound) throw new TransitionError("Settlement intent expiry does not match");
   requireValue(intent.nonce, "settlement intent nonce");
+}
+
+export interface SettlementReceipt {
+  schema: "closeout-settlement-receipt/v1";
+  jobId: string;
+  /** Hash of the job's immutable terms, so the receipt can be re-derived. */
+  jobHash: string;
+  state: "released" | "refunded";
+  buyer: string;
+  provider: string;
+  assetId: number;
+  amount: string;
+  taskCommitment: string;
+  deliveryCommitment?: string;
+  settlementIntentHash?: string;
+  fundingTxId: string;
+  settlementTxId: string;
+  issuedAt: string;
+}
+
+/**
+ * The immutable terms of a job, hashed.
+ *
+ * Only the terms — not the state, not the transaction ids. Two receipts
+ * for the same job agree on this value at every point in its life, which
+ * is what lets a holder check that a receipt describes the job they think
+ * it does.
+ */
+export function jobHash(job: Job): string {
+  return createHash("sha256")
+    .update(
+      canonicalize({
+        id: job.id,
+        buyer: job.buyer,
+        provider: job.provider,
+        assetId: job.assetId,
+        amount: job.amount,
+        expiresAtRound: job.expiresAtRound,
+        taskCommitment: job.taskCommitment,
+      }),
+    )
+    .digest("hex");
+}
+
+/**
+ * Issues the receipt for a settled job.
+ *
+ * The receipt names commitments and transaction ids, never the task text
+ * or the delivery location. It proves what was agreed, delivered,
+ * accepted and paid — it does not prove the delivery was good, useful, or
+ * legally complete.
+ */
+export function deriveReceipt(job: Job, issuedAt = new Date().toISOString()): SettlementReceipt {
+  if (job.state !== "released" && job.state !== "refunded") {
+    throw new TransitionError("Only a released or refunded job has a receipt");
+  }
+  const settlementTxId = job.state === "released" ? job.settlementTxId : job.refundTxId;
+  if (!settlementTxId) throw new TransitionError("Settled job has no settlement transaction id");
+  if (!job.fundingTxId) throw new TransitionError("Settled job has no funding transaction id");
+
+  return {
+    schema: "closeout-settlement-receipt/v1",
+    jobId: job.id,
+    jobHash: jobHash(job),
+    state: job.state,
+    buyer: job.buyer,
+    provider: job.provider,
+    assetId: job.assetId,
+    amount: job.amount,
+    taskCommitment: job.taskCommitment,
+    deliveryCommitment: job.delivery?.contentHash,
+    settlementIntentHash: job.state === "released" ? job.settlementIntentHash : undefined,
+    fundingTxId: job.fundingTxId,
+    settlementTxId,
+    issuedAt,
+  };
+}
+
+/**
+ * Re-derives a receipt from the job record and reports whether it matches.
+ *
+ * This is the check a holder runs against the job state — it says the
+ * receipt was not edited after issue. It does not consult the chain; see
+ * `verifyReceiptOnChain` in `@closeout/client` for that.
+ */
+export function verifyReceipt(receipt: SettlementReceipt, job: Job): boolean {
+  const expected = deriveReceipt(job, receipt.issuedAt);
+  return canonicalize({ ...expected }) === canonicalize({ ...receipt });
 }

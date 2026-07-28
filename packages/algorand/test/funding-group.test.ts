@@ -24,6 +24,7 @@ const job = () => createJob({
   amount: "100000",
   expiresAtRound: 500,
   deliveryMode: "buyer_accepts",
+  taskCommitment: "b".repeat(64),
 });
 
 test("funding group transfers exact USDC then calls the expected app", () => {

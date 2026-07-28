@@ -48,12 +48,30 @@ amount. Final state `state = 6` (refunded), with no accepted intent ever
 recorded — the job never reached acceptance, which is what made it
 refundable.
 
+## Receipts verified against these settlements
+
+`npx tsx scripts/verify-testnet-receipts.ts` in `packages/closeout-client`
+checks receipts against the two applications above using nothing but a
+public node — no Closeout API is involved, which is the only reason a
+receipt is worth more than an invoice.
+
+| Receipt | Result |
+|---|---|
+| Honest released receipt | **verifies** |
+| Honest refunded receipt | **verifies** |
+| Amount inflated to 5,000,000 | rejected — `on-chain 10000, receipt 5000000` |
+| Settlement intent substituted | rejected — intent does not match the accepted one |
+| Released receipt pointed at the refunded escrow | rejected — `on-chain state 6, receipt claims 5` |
+
 ## What this run does and does not show
 
 It shows the settlement rules holding on a real chain: funds move once,
 in the direction the recorded decisions point, and the unresolved job
-returns to the buyer rather than paying out on uncertainty.
+returns to the buyer rather than paying out on uncertainty. It also shows
+that a settlement record can be checked by someone who does not trust the
+party that issued it.
 
-It does not show a paid `POST /jobs`, a receipt, or a third party
-verifying a settlement without our API. Those are the next steps, and no
-claim of them should be made from this run.
+It does not show a paid `POST /jobs`, a signed receipt, or a demo with two
+real agents doing real work. Nor does verification say a delivery was any
+good — no settlement record can. Those are the next steps, and no claim of
+them should be made from this run.

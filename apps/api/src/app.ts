@@ -4,6 +4,7 @@ import {
   accept,
   createJob,
   fund,
+  deriveReceipt,
   refund,
   release,
   submitDelivery,
@@ -47,6 +48,7 @@ function jobFromBody(body: Record<string, unknown>): Job {
     assetId: integer(body.assetId, "assetId"),
     amount: text(body.amount, "amount"),
     expiresAtRound: integer(body.expiresAtRound, "expiresAtRound"),
+    taskCommitment: text(body.taskCommitment, "taskCommitment"),
     deliveryMode: body.deliveryMode === "buyer_accepts" || body.deliveryMode === "deterministic_verify"
       ? body.deliveryMode
       : (() => { throw new TransitionError("deliveryMode is invalid"); })(),
@@ -141,6 +143,18 @@ export function createCloseoutApp(store: JobStore = createMemoryStore()): Hono {
     );
     store.set(job);
     return c.json({ job });
+  });
+
+  /**
+   * The receipt for a settled job.
+   *
+   * Public on purpose, and derived rather than stored: it is the artifact
+   * a third party checks. It names commitments and transaction ids only —
+   * never the task text or the delivery location.
+   */
+  app.get("/receipts/:id", (c) => {
+    const job = requireJob(store, c.req.param("id"));
+    return c.json({ receipt: deriveReceipt(job) });
   });
 
   return app;
