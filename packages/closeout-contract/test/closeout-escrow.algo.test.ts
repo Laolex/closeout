@@ -219,14 +219,14 @@ describe('a malformed funding group moves nothing', () => {
 
   test('rejects a short payment', () => {
     const job = configured()
-    expect(() => fundWith(job, { amount: Uint64(AMOUNT.valueOf() - 1n) })).toThrow(/Funding amount does not match/)
+    expect(() => fundWith(job, { amount: Uint64(Number(AMOUNT.valueOf()) - 1) })).toThrow(/Funding amount does not match/)
   })
 
   test('rejects an overpayment, which would otherwise strand the surplus', () => {
     // The release path transfers exactly `amount`, so anything above it
     // would sit in the application account with no rule to move it.
     const job = configured()
-    expect(() => fundWith(job, { amount: Uint64(AMOUNT.valueOf() + 1n) })).toThrow(/Funding amount does not match/)
+    expect(() => fundWith(job, { amount: Uint64(Number(AMOUNT.valueOf()) + 1) })).toThrow(/Funding amount does not match/)
   })
 
   test('rejects a transfer aimed at someone other than the escrow', () => {
@@ -345,7 +345,7 @@ describe('value conservation: the escrow pays out exactly once', () => {
     expire()
     call(job.buyer, job.escrow, () => job.escrow.refund())
 
-    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(job.intent))).toThrow(/not accepted/)
+    expect(() => call(job.buyer, job.escrow, () => job.escrow.release(intentHash()))).toThrow(/not accepted/)
   })
 })
 
