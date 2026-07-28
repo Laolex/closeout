@@ -1,0 +1,61 @@
+# One origin, three paid endpoints, one payout account.
+#
+# The Global x402 Challenge distributes ALGO across the top 20 *endpoints*
+# while judging the cash prizes per *project*, so Preflight and Closeout
+# are served from a single host as one coherent stack — check before you
+# sign, settle with proof — rather than as two entries competing for the
+# same traffic.
+#
+#   /preflight    what a transaction group will actually do   (Preflight)
+#   /asset-risk   who can freeze or claw back a holding       (Preflight)
+#   /jobs         a verifiable settlement record for work     (Closeout)
+#   /receipts/*   the receipt for a settled job               (Closeout)
+#   /console/*    the job timeline, as a page                 (Closeout)
+#
+# Install:
+#   sudo cp deploy/x402.clearcrew.xyz.caddy /etc/caddy/Caddyfile.d/
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# DNS MUST EXIST FIRST. Caddy will try to issue a certificate on reload,
+# and an A record that does not point here turns that into repeated
+# failures against a rate-limited CA.
+
+x402.clearcrew.xyz {
+	encode gzip
+
+	# Closeout — settlement
+	handle /jobs* {
+		reverse_proxy 127.0.0.1:8893
+	}
+	handle /receipts/* {
+		reverse_proxy 127.0.0.1:8893
+	}
+	handle /console/* {
+		reverse_proxy 127.0.0.1:8893
+	}
+
+	# Preflight — pre-sign checks
+	handle /preflight* {
+		reverse_proxy 127.0.0.1:8894
+	}
+	handle /asset-risk* {
+		reverse_proxy 127.0.0.1:8894
+	}
+
+	# A paid endpoint that answers 404 with an HTML body confuses agent
+	# clients; keep the default a small JSON.
+	handle {
+		respond `{"service":"closeout+preflight","endpoints":["/preflight","/asset-risk","/jobs","/receipts/:id","/console/:id"]}` 200 {
+			close
+		}
+	}
+
+	header {
+		Content-Type application/json
+		-Server
+	}
+	log {
+		output file /var/log/caddy/x402.log
+	}
+}

@@ -1,0 +1,21 @@
+[Unit]
+Description=Closeout API (x402 job creation, receipts, console)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/laolex/closeout/apps/api
+# EnvironmentFile holds PAY_TO and is the only place secrets belong.
+EnvironmentFile=/etc/closeout.env
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+# The service refuses to start when half-configured, so a restart loop
+# here means a configuration error rather than a crash — check the log
+# before assuming the process is at fault.
+StandardOutput=append:/var/log/closeout/api.log
+StandardError=append:/var/log/closeout/api.log
+
+[Install]
+WantedBy=multi-user.target

@@ -37,7 +37,7 @@ export interface PaymentRequirements {
   description: string;
   mimeType: "application/json";
   maxTimeoutSeconds: number;
-  extra: { decimals: number; feePayer?: string };
+  extra: { decimals: number; feePayer?: string; tag?: string };
 }
 
 export interface VerifyResult {
@@ -52,6 +52,15 @@ export interface Facilitator {
   settle(header: string, requirements: PaymentRequirements): Promise<void>;
 }
 
+/**
+ * Entry into the Algorand Global x402 Challenge is carried in the
+ * published requirements, not in a registration form: the leaderboard
+ * indexes resources whose `extra.tag` is this string. An untagged
+ * endpoint still takes real payments and still answers — it simply
+ * scores nothing, and nothing about serving traffic reveals that.
+ */
+export const CHALLENGE_TAG = "x402-global-challenge";
+
 export interface PaymentConfig {
   payTo: string;
   /** Absolute origin: `resource` names a different endpoint per host. */
@@ -62,6 +71,11 @@ export interface PaymentConfig {
   feePayer?: string;
   network?: string;
   asset?: string;
+  /**
+   * Leaderboard tag published as `extra.tag`. Defaults to the challenge
+   * entry; pass `null` for a deployment that should not be scored.
+   */
+  tag?: string | null;
 }
 
 export function buildRequirements(config: PaymentConfig): PaymentRequirements {
@@ -77,7 +91,11 @@ export function buildRequirements(config: PaymentConfig): PaymentRequirements {
       "Create a Closeout job: validate the terms, prepare the funding group, and issue a verifiable settlement record.",
     mimeType: "application/json",
     maxTimeoutSeconds: 60,
-    extra: { decimals: USDC_DECIMALS, ...(config.feePayer ? { feePayer: config.feePayer } : {}) },
+    extra: {
+      decimals: USDC_DECIMALS,
+      ...(config.feePayer ? { feePayer: config.feePayer } : {}),
+      ...(config.tag === null ? {} : { tag: config.tag ?? CHALLENGE_TAG }),
+    },
   };
 }
 
@@ -136,4 +154,83 @@ export interface PaidStore {
 export function createMemoryPaidStore(): PaidStore {
   const entries = new Map<string, { jobId: string; settled: boolean }>();
   return { get: (n) => entries.get(n), set: (n, v) => entries.set(n, v) };
+}
+
+interface FacilitatorResponse {
+  isValid?: boolean;
+  valid?: boolean;
+  invalidReason?: string;
+  errorReason?: string;
+  error?: string;
+  success?: boolean;
+  nonce?: string;
+  txId?: string;
+}
+
+/**
+ * The live GoPlausible facilitator.
+ *
+ * Ported from Preflight, where every behaviour encoded here was found by
+ * a request failing rather than by reading the spec:
+ *
+ * - `/verify` and `/settle` want the **decoded** `X-PAYMENT` object as
+ *   `paymentPayload`. Forwarding the raw header string fails as
+ *   "Invalid payload format", which reads like the caller sent something
+ *   broken when the bug is ours.
+ * - `/verify` answers **HTTP 200 with `isValid: false`** for a rejected
+ *   payment. The status code says nothing; the body is the verdict.
+ *   Trusting the status silently serves unpaid traffic.
+ * - a settle can likewise return 200 while reporting failure, and that
+ *   must never be recorded as money received.
+ */
+export function httpFacilitator(baseUrl: string, fetchImpl: typeof fetch = fetch): Facilitator {
+  const post = async (path: string, header: string, requirements: PaymentRequirements) => {
+    const res = await fetchImpl(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        x402Version: X402_VERSION,
+        paymentPayload: decodePaymentHeader(header),
+        paymentRequirements: requirements,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as FacilitatorResponse;
+    return { status: res.status, json };
+  };
+
+  const reasonOf = (json: FacilitatorResponse): string | undefined =>
+    json.invalidReason ?? json.errorReason ?? json.error;
+
+  return {
+    async verify(header, requirements) {
+      let result: { status: number; json: FacilitatorResponse };
+      try {
+        result = await post("/verify", header, requirements);
+      } catch (error) {
+        // An undecodable header is the caller's problem, and is reported
+        // as such rather than as an unreachable facilitator.
+        return { ok: false, nonce: "", reason: (error as Error).message };
+      }
+
+      if (result.status < 200 || result.status >= 300) {
+        return {
+          ok: false,
+          nonce: "",
+          reason: reasonOf(result.json) ?? `facilitator verify returned ${result.status}`,
+        };
+      }
+      if (!(result.json.isValid ?? result.json.valid ?? false)) {
+        return { ok: false, nonce: "", reason: reasonOf(result.json) ?? "payment rejected" };
+      }
+      return { ok: true, nonce: result.json.nonce ?? nonceFromHeader(header) };
+    },
+
+    async settle(header, requirements) {
+      const { status, json } = await post("/settle", header, requirements);
+      const settled = status >= 200 && status < 300 && json.success !== false && json.isValid !== false;
+      if (!settled) {
+        throw new Error(`facilitator settle failed (${status}): ${reasonOf(json) ?? "no reason given"}`);
+      }
+    },
+  };
 }

@@ -6,11 +6,13 @@
   "scripts": {
     "build": "tsc --noEmit false",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@closeout/console": "workspace:*",
     "@closeout/core": "workspace:*",
+    "@hono/node-server": "^2.0.12",
     "hono": "^4.7.2"
   }
 }
