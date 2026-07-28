@@ -71,10 +71,9 @@ returns to the buyer rather than paying out on uncertainty. It also shows
 that a settlement record can be checked by someone who does not trust the
 party that issued it.
 
-It does not show a paid `POST /jobs`, a signed receipt, or a demo with two
-real agents doing real work. Nor does verification say a delivery was any
-good — no settlement record can. Those are the next steps, and no claim of
-them should be made from this run.
+It does not show a paid `POST /jobs` or a signed receipt. Nor does
+verification say a delivery was any good — no settlement record can. Those
+are the next steps, and no claim of them should be made from this run.
 
 ## Two agents, one real job
 
