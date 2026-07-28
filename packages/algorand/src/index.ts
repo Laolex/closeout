@@ -39,6 +39,20 @@ export function jobHash(job: Pick<Job, "id" | "buyer" | "provider" | "assetId" |
 /**
  * Produces the two-transaction group the eventual Closeout application must accept:
  * a USDC transfer into the application address immediately followed by `fund`.
+ *
+ * @deprecated Superseded by `fundJob` in `@closeout/client`, and **this
+ * version cannot work against the deployed contract**. It was written
+ * before the contract existed and encodes the call three ways the ARC-4
+ * application will reject: the app argument is the bare method name
+ * rather than the 4-byte selector, `fund(axfer)void` takes no commitment
+ * or expiry arguments, and `CLOSEOUT_METHODS` names two methods —
+ * `deliver` and `accept` — that the contract does not have; they are
+ * `markDelivered` and `markAccepted`.
+ *
+ * Kept only so its `jobHash` commitment stays available. Every failure
+ * above surfaces on chain and nowhere else, which is why
+ * `@closeout/client` cross-checks its signatures against the compiled
+ * ARC-56 artifact in a test.
  */
 export function prepareFundingGroup(
   job: Job,
