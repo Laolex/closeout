@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { buildTimeline, renderTimeline } from "@closeout/console";
 import {
   TransitionError,
   accept,
@@ -155,6 +156,15 @@ export function createCloseoutApp(store: JobStore = createMemoryStore()): Hono {
   app.get("/receipts/:id", (c) => {
     const job = requireJob(store, c.req.param("id"));
     return c.json({ receipt: deriveReceipt(job) });
+  });
+
+  /**
+   * The job timeline as a page, for a person rather than a client.
+   * Same record as GET /jobs/:id, rendered — and it discloses no more.
+   */
+  app.get("/console/:id", (c) => {
+    const job = requireJob(store, c.req.param("id"));
+    return c.html(renderTimeline(buildTimeline(job)));
   });
 
   return app;

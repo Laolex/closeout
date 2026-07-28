@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@closeout/core": "workspace:*",
-    "hono": "^4.7.2"
+    "hono": "^4.7.2",
+    "@closeout/console": "workspace:*"
   }
 }

@@ -75,3 +75,33 @@ It does not show a paid `POST /jobs`, a signed receipt, or a demo with two
 real agents doing real work. Nor does verification say a delivery was any
 good — no settlement record can. Those are the next steps, and no claim of
 them should be made from this run.
+
+## Two agents, one real job
+
+`DEPLOYER_MNEMONIC="…" pnpm --filter @closeout/demo-agents demo` — run
+2026-07-28, escrow `768202344`, budget 25,000 units of asset `768202339`.
+
+The buyer wanted an **asset control-surface report**: who, other than the
+holder, can move or immobilise a holding. That is a real question with a
+real answer, and not visible from a balance — chosen so the demo is not a
+circular job invented to generate a settlement.
+
+| Step | Transaction |
+|---|---|
+| Fund | `XUDQFHQM2AIQKGPCSKJY7VR2P4MFJAKFPZHRMJNR6QEEXJ345SCQ` |
+| Deliver | `KZGA2I2P2ZYUT6DBSGXEHHIVMXOKEXVP7JQIT6OP7WYVBQRUDE7Q` |
+| Accept | `UWE37TOHNBPRTPNLW5CC2CSZDB7WREFKGEERMM6NH6G5OZDKMCBQ` |
+| Release | `KBMU5ASBDIAMZP4BBVKQCMYHV26XCMWYKDHKSTHWKDVCZ6UX4IBQ` |
+
+The provider read the asset's parameters off a node and correctly reported
+both findings — a freeze address and a manager address are set, so a third
+party can immobilise holdings and reconfigure roles. The buyer ran the
+**deterministic verifier it named before any work existed**: shape, right
+asset, and findings that follow from the reported fields. No model judged
+anything. The provider then submitted the release itself, and the receipt
+verified against the chain on all four checks.
+
+**What is real here and what is not.** The work, the data, the
+verification, the escrow, the settlement and the receipt are real. The
+budget is a TestNet stand-in asset, not money — so this demonstrates the
+mechanism, not demand. Nobody has yet paid for a Closeout settlement.
