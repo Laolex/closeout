@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@closeout/console": "workspace:*",
     "@closeout/core": "workspace:*",
-    "hono": "^4.7.2",
-    "@closeout/console": "workspace:*"
+    "hono": "^4.7.2"
   }
 }

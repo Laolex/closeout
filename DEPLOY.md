@@ -9,7 +9,11 @@ the thing being deployed holds other people's money.
 
 - **TestNet rehearsal.** Both settlement paths and a two-agent job, with
   real transaction ids — see [TESTNET-RUN.md](TESTNET-RUN.md).
-- 90 tests, including the full transition table: every illegal
+- **Durable storage.** Jobs and the paid-nonce record survive a restart,
+  so a replayed payment cannot settle twice — see `apps/api/src/durable.ts`.
+  The default in-memory stores remain, and are for tests and the free
+  prototype only: **configure the file stores before taking payments.**
+- 95 tests, including the full transition table: every illegal
   transition refused, per-actor authorization, value conservation, and
   on-chain verification of receipts.
 
