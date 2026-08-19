@@ -104,3 +104,39 @@ verified against the chain on all four checks.
 verification, the escrow, the settlement and the receipt are real. The
 budget is a TestNet stand-in asset, not money — so this demonstrates the
 mechanism, not demand. Nobody has yet paid for a Closeout settlement.
+
+## The refusal, shown beside the settlement
+
+The run above proves the mechanism works. It never shows it *declining*
+anything, which is the half a reader actually needs — a system that has
+only ever been seen to succeed has not been seen to work.
+
+Two additions close that gap.
+
+**Reproducible now, no key required.** `pnpm --filter @closeout/demo-agents
+frame` builds the honest receipt for escrow `768202344` — reading buyer,
+provider, amount and the accepted intent hash back off the chain rather
+than asserting them here — and a twin that differs in exactly one field,
+an amount inflated from 25,000 to 250,000. It verifies both against a
+public node and prints them side by side. Run 2026-08-19: the honest
+receipt verifies on all four checks, the twin is rejected on `amount
+matches` with `on-chain 25000, receipt 250000`. The script exits non-zero
+without printing if either half comes out the other way, so the picture
+cannot be produced from a result that did not happen.
+
+Two receipt fields, `jobHash` and `taskCommitment`, are not recoverable
+from chain state and are labelled as such in the output. They are not
+what the on-chain check covers, and the frame does not imply otherwise.
+
+**Written but not yet run live.** The two-agent demo now attempts a forged
+release before the honest one: same escrow, same round, same parties, same
+accepted delivery, with a settlement intent whose amount is ten times the
+budget. The escrow compares the hash against the intent the buyer accepted
+and declines; the demo aborts loudly rather than continuing if the chain
+ever allows it. This path **has not been executed against TestNet** — it
+needs a funded account, and none is provisioned here. It typechecks, and
+the rule it exercises is covered by two contract tests (`release refuses
+an intent other than the accepted one`, and the same for a provider
+substituting their own). That is not the same as having watched it fail on
+a live network, and it should not be described as though it were until
+someone runs it.

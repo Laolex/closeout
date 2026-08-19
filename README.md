@@ -14,6 +14,39 @@ afterwards.
 > reviewed and nothing is deployed to MainNet.** See
 > [DEPLOY.md](DEPLOY.md).
 
+## The one shot
+
+One real settlement on TestNet, checked twice. The two receipts differ by
+exactly one field, and only one of them survives contact with the chain:
+
+```
+───────────────────────────────────────────────────────────────────────────────────
+  Escrow 768202344 on Algorand TestNet — the same settlement, two receipts
+───────────────────────────────────────────────────────────────────────────────────
+                            REFUSED                              SETTLED
+
+  receipt amount            250000  ← one field                  25000
+  parties, asset, intent    identical                            identical
+  escrow is released        ✓                                    ✓
+  amount matches            ✗  on-chain 25000, receipt 250000    ✓
+  intent matches            ✓                                    ✓
+
+  verdict                   REFUSED                              VERIFIED
+───────────────────────────────────────────────────────────────────────────────────
+```
+
+Reproduce it in about five seconds, with no key, no funds and no Closeout
+API — a public node is the only thing consulted, which is the whole
+claim:
+
+```bash
+pnpm --filter @closeout/demo-agents frame
+```
+
+The script refuses to print the picture at all unless the honest receipt
+verifies *and* the tampered one is rejected, so it cannot show a result
+it did not get.
+
 ## The rules
 
 - Terms are immutable once configured: buyer, provider, asset, amount, expiry.
@@ -67,7 +100,9 @@ npx tsx scripts/verify-testnet-receipts.ts
 That script checks honest receipts for a released and a refunded job from
 [TESTNET-RUN.md](TESTNET-RUN.md), and three forgeries — an inflated
 amount, a substituted settlement intent, and a released receipt pointed at
-the refunded escrow. The forgeries are rejected.
+the refunded escrow. The forgeries are rejected. `pnpm --filter
+@closeout/demo-agents frame` is the same check, printed as the picture
+above.
 
 ## Layout
 
@@ -84,7 +119,7 @@ the refunded escrow. The forgeries are rejected.
 
 ```bash
 pnpm install
-pnpm -r test        # 95 tests
+pnpm -r test        # 105 tests (72 node, 33 contract)
 pnpm -r typecheck
 ```
 

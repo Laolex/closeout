@@ -6,7 +6,8 @@
   "scripts": {
     "test": "tsx --test test/*.test.ts",
     "demo": "tsx src/run.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "frame": "tsx src/frame.ts"
   },
   "dependencies": {
     "@closeout/client": "workspace:*",
