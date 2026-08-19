@@ -41,6 +41,7 @@ import {
 } from "@closeout/client";
 
 import { produceReport } from "./provider.ts";
+import { renderFrame } from "./frame.ts";
 import { contentHash, taskCommitment, taskRequest, verifyDelivery } from "./task.ts";
 
 import { readFileSync } from "node:fs";
@@ -190,7 +191,33 @@ async function main() {
   job = accept(job, buyer.addr, intent);
   console.log(`[buyer] accepted  ${acceptTx}`);
 
-  // --- 5. The provider collects. The buyer is not involved. ---
+  // --- 5. The forgery, attempted first, so the payout is not the only
+  // thing this demo has ever been seen to do.
+  //
+  // Same escrow, same round, same two parties, same accepted delivery.
+  // One field of the settlement intent differs: the provider bills ten
+  // times the budget. The escrow compares the hash against the intent the
+  // buyer actually accepted and declines. Nothing here is simulated — if
+  // the chain were to allow this, the demo aborts rather than print a
+  // picture that is not true.
+  const forgedIntent: SettlementIntent = { ...intent, amount: (BUDGET * 10n).toString() };
+  const forgedHash = Buffer.from(hashSettlementIntent(forgedIntent), "hex");
+  let refusal: string;
+  try {
+    await releaseOnChain(algod, appId, provider, {
+      provider: provider.addr,
+      assetId,
+      intentHash: new Uint8Array(forgedHash),
+    });
+    console.error("\n[demo] ABORT: the escrow paid out against an intent the buyer never accepted.");
+    console.error("       That is the rule this project exists to enforce. Stopping.");
+    process.exit(1);
+  } catch (error) {
+    refusal = error instanceof Error ? error.message : String(error);
+    console.log(`[provider] release against a forged intent REFUSED by the escrow`);
+  }
+
+  // --- 6. The honest release. The provider collects; the buyer is not involved. ---
   const releaseTx = await releaseOnChain(algod, appId, provider, {
     provider: provider.addr,
     assetId,
@@ -199,7 +226,7 @@ async function main() {
   job = release(job, intent, Number((await algod.status().do()).lastRound), releaseTx);
   console.log(`[provider] released to self on the buyer's acceptance  ${releaseTx}`);
 
-  // --- 6. The receipt, checked against the chain by neither party. ---
+  // --- 7. The receipt, checked against the chain by neither party. ---
   const receipt = deriveReceipt(job);
   const verification = await verifyReceiptOnChain(algod, appId, receipt);
   console.log(`\n[anyone] receipt verifies against the chain: ${verification.ok}`);
@@ -209,6 +236,28 @@ async function main() {
     (a) => BigInt(a.assetId) === assetId,
   );
   console.log(`\nprovider holds ${held?.amount ?? 0} units (budget was ${BUDGET})`);
+
+  // The one shot: both outcomes came out of this same run, minutes apart,
+  // off the same escrow.
+  console.log(
+    "\n" +
+      renderFrame(
+        `Escrow ${appId} — one accepted delivery, two attempted settlements`,
+        [
+          { label: "intent amount", refused: `${forgedIntent.amount}  ← one field`, settled: intent.amount },
+          { label: "parties, asset, nonce", refused: "identical", settled: "identical" },
+          { label: "escrow's answer", refused: "declined", settled: releaseTx },
+          { label: "provider received", refused: "0 units", settled: `${held?.amount ?? 0} units` },
+          { label: "", refused: "", settled: "" },
+          { label: "verdict", refused: "REFUSED", settled: "SETTLED" },
+        ],
+        [
+          `Refusal reported by the node: ${refusal.split("\n")[0].slice(0, 120)}`,
+          "The buyer was not asked twice. Acceptance authorised one settlement,",
+          "and the escrow paid that one and no other.",
+        ],
+      ),
+  );
   console.log(`\n${JSON.stringify({ appId: appId.toString(), receipt }, null, 2)}`);
 }
 
